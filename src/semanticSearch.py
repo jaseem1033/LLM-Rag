@@ -12,7 +12,7 @@ api_key = os.getenv("OPEN_API_KEY")
 # OpenRouter / OpenAI client
 client = OpenAI(
     base_url = "https://openrouter.ai/api/v1",
-    api_key =  api_key
+    api_key = api_key
 )
 
 # PostgreSQL connection
