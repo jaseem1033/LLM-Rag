@@ -1,13 +1,18 @@
 from openai import OpenAI
 import psycopg2
 from colorama import Fore, Style, init, Back
+import os
+from dotenv import load_dotenv
 
+load_dotenv()
 init(autoreset=True)
+
+api_key = os.getenv("OPEN_API_KEY")
 
 # OpenRouter / OpenAI client
 client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key="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"   # replace this
+    base_url = "https://openrouter.ai/api/v1",
+    api_key =  api_key
 )
 
 # PostgreSQL connection

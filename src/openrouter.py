@@ -1,8 +1,14 @@
 from openai import OpenAI
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+api_key = os.getenv("OPEN_API_KEY")
 
 client = OpenAI(
-  base_url="https://openrouter.ai/api/v1",
-  api_key="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",
+  base_url = "https://openrouter.ai/api/v1",
+  api_key = api_key,
 )
 
 def get_embedding(text: str) -> list[float]:
