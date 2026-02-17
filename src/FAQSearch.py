@@ -27,7 +27,7 @@ class FAQSearch:
     def _ensure_table(self):
         with conn.cursor() as cur:
             cur.execute("""
-                        CREATE TABLE IF NOT EXISTS faqs
+                        CREATE TABLE IF NOT EXISTS faqs(
                         id SERIAL PRIMARY KEY,
                         question TEXT,
                         answer TEXT,
@@ -38,7 +38,7 @@ class FAQSearch:
 
     def add_faq(self, question: str, answer: str):
         embedding = self._get_embedding(question)
-        with conn.cursor as cur:
+        with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO faqs (question, answer, embedding) VALUES(%s, %s, %s)",
                 (question, answer, embedding)
@@ -51,7 +51,29 @@ class FAQSearch:
             cur.execute("""
                         SELECT question, answer, 1 - (embedding <=> %s::vector) AS similarity
                         FROM faqs
-                        WHERE 1 - (embedding <=> %s::vector) > %s                        
-"""
-                
-            )
+                        WHERE 1 - (embedding <=> %s::vector) > %s
+                        ORDER BY embedding <=> %s::vector
+                        LIMIT 1                 
+                """, (query_embedding, query_embedding, threshold, query_embedding))
+            row = cur.fetchone()
+            print(row)
+        if row:
+            return {"question": row[0], "answer": row[1], "similarity": row[2]}
+        return None
+    
+    def _get_embedding(self, text: str) -> list[float]:
+        response = client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text
+        )
+        return response.data[0].embedding
+    
+faq = FAQSearch()
+faq.add_faq("How do I cancel my subscription?", "Go to Settings > Billing > Cancel")
+faq.add_faq("What payment methods do you accept?", "We accept Visa, Mastercard, PayPal")            
+
+result = faq.search("cancel my subscription")
+if result :
+    print(f"Q: {result['question']}")
+    print(f"A: {result['answer']}")
+    print(f"Confidence: {result['similarity']:.0%}")
