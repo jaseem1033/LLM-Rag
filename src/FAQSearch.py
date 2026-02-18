@@ -69,11 +69,11 @@ class FAQSearch:
         return response.data[0].embedding
     
 faq = FAQSearch()
-faq.add_faq("How do I cancel my subscription?", "Go to Settings > Billing > Cancel")
-faq.add_faq("What payment methods do you accept?", "We accept Visa, Mastercard, PayPal")            
+# faq.add_faq("How do I cancel my subscription?", "Go to Settings > Billing > Cancel")
+# faq.add_faq("What payment methods do you accept?", "We accept Visa, Mastercard, PayPal")            
 
-result = faq.search("cancel my subscription")
+result = faq.search("cancel  subscription")
 if result :
     print(f"Q: {result['question']}")
-    print(f"A: {result['answer']}")
-    print(f"Confidence: {result['similarity']:.0%}")
+    print(f"{Back.WHITE}{Fore.GREEN}{Style.BRIGHT} A: {result['answer']}")
+    print(f"{Back.RED}{Style.BRIGHT}Confidence: {result['similarity']:.0%}")

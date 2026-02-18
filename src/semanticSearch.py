@@ -34,7 +34,7 @@ def semantic_search(query: str, limit: int = 1) -> list[dict]:
         cur.execute("""
             SELECT content, 1 - (embedding <=> %s::vector) AS similarity
             FROM documents
-            ORDER BY (embedding <=> %s::vector) * 1
+            ORDER BY (embedding <=> %s::vector)
             LIMIT %s
         """, (query_embedding,query_embedding, limit))
 
