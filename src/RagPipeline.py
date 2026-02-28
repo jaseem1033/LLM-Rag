@@ -22,10 +22,11 @@ conn = psycopg2.connect(
 
 class RagPipeline:
     def __init__(self):
+        self.min_similarity = 0.35
         self._ensure_table()
     
     def _ensure_table(self):
-        with conn.cursor as cur:
+        with conn.cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS chunks (
                         id SERIAL PRIMARY KEY,
@@ -50,7 +51,7 @@ class RagPipeline:
             print(f"Ingested {len(chunks)} chunks from {source}")
 
     def query(self, question: str, top_k: int = 3) -> str:
-        """Rag Queery: retireve context, then generate answer."""
+        """RAG query: retrieve context, then generate answer."""
 
         context_chunks = self._retrieve(question, top_k)
 
@@ -58,26 +59,37 @@ class RagPipeline:
             return "I don't have information about that."
         
         context = "\n\n".join([c['content'] for c in context_chunks])
+        best_chunk = max(context_chunks, key=lambda c: c["similarity"])
         sources = list(set([c['source'] for c in context_chunks]))
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="openai/gpt-4o-mini",
             messages=[
                 {
                     "role": "system",
-                    "content": """Answer questions based on the provided context.
-                    If the context doesn't contain the answer, say "I don't have information about that."
-                    Be concise and cite which document the info came from."""
+                    "content": """You are a RAG assistant.
+                    Use ONLY the provided context.
+                    If the user input is a statement, summarize the key facts from context.
+                    If the context truly does not contain the answer, reply exactly: I don't have information about that.
+                    Keep it concise."""
                 },
                 {
                     "role": "user",
                     "content": f"""Context: {context}
                     Question: {question}"""
                 }
-            ]
+            ],
+            temperature=0
         )
 
-        answer = response.choices[0].message.content
+        answer = (response.choices[0].message.content or "").strip()
+
+        if (
+            "i don't have information about that" in answer.lower()
+            and best_chunk["similarity"] >= self.min_similarity
+        ):
+            answer = f"Based on available documents: {best_chunk['content']}"
+
         return f"{answer}\n\nSources: {', '.join(sources)}"
     
     def _retrieve(self, query: str, top_k: int) -> list[dict]:
@@ -87,12 +99,14 @@ class RagPipeline:
             cur.execute("""
                 SELECT content, source, 1 - (embedding <=> %s::vector) AS similarity
                 FROM chunks
-                WHERE 1 - (embedding <=> %s::vector) > 0.7
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s
-            """, (query_embedding, query_embedding, query_embedding, top_k))
-            return [{"content": r[0], "source": r[1], "similarity": r[2]}
-                    for r in cur.fetchall()]
+            """, (query_embedding, query_embedding, top_k))
+            rows = [
+                {"content": r[0], "source": r[1], "similarity": float(r[2])}
+                for r in cur.fetchall()
+            ]
+            return [row for row in rows if row["similarity"] >= self.min_similarity]
     
     def _chunk_text(self, text: str, size: int = 300, overlap: int = 30) -> list[str]:
         words = text.split()
