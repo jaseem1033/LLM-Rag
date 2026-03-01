@@ -2,6 +2,11 @@ from openai import OpenAI
 from app.database import get_connection
 from app.embeddings import get_embedding
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+api_key = os.getenv("OPEN_API_KEY")
 
 # OpenRouter / OpenAI client
 client = OpenAI(
