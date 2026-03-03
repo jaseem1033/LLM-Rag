@@ -14,7 +14,7 @@ client = OpenAI(
     api_key = api_key
 )
 
-def retrieve_context(query: str, top_k: int = 5, threshold: float = 0.7) -> list[dict]:
+def retrieve_context(query: str, top_k: int = 5, threshold: float = 0.3) -> list[dict]:
     """Find relevant chunks for a query."""
     query_embedding = get_embedding(query)
     conn = get_connection()
@@ -37,6 +37,26 @@ def retrieve_context(query: str, top_k: int = 5, threshold: float = 0.7) -> list
             {"content": row["content"], "source": row["filename"], "similarity": row["similarity"]}
             for row in cur.fetchall()
         ]
+
+        # Fallback: if threshold is too strict for the query, return nearest chunks anyway
+        # so the generator can still decide if the answer exists in context.
+        if not results:
+            cur.execute("""
+                SELECT
+                    c.content,
+                    d.filename,
+                    1 - (c.embedding <=> %s::vector) AS similarity
+                FROM chunks c
+                JOIN documents d ON c.document_id = d.id
+                WHERE d.status = 'ready'
+                ORDER BY c.embedding <=> %s::vector
+                LIMIT %s
+            """, (query_embedding, query_embedding, top_k))
+
+            results = [
+                {"content": row["content"], "source": row["filename"], "similarity": row["similarity"]}
+                for row in cur.fetchall()
+            ]
 
     conn.close()
     return results
@@ -70,7 +90,17 @@ RULES:
 
     # Add chat history for follow-ups
     if chat_history:
-        messages.extend(chat_history[-4:])  # Last 2 exchanges
+        valid_history = []
+        for message in chat_history:
+            if not isinstance(message, dict):
+                continue
+
+            role = message.get("role")
+            content = message.get("content")
+            if role in {"system", "user", "assistant"} and isinstance(content, str):
+                valid_history.append({"role": role, "content": content})
+
+        messages.extend(valid_history[-4:])  # Last 2 exchanges
 
     # Add current query with context
     messages.append({

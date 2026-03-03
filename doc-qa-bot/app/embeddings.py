@@ -12,7 +12,6 @@ client = OpenAI(
     api_key = api_key
 )
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def get_embedding(text: str) -> list[float]:
     """Generate embedding for a single text."""

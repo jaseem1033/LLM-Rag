@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, HTTPException, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Literal
 from app.database import get_connection, init_db
 from app.chunker import chunk_document
 from app.embeddings import get_embeddings_batch
@@ -14,9 +15,14 @@ def startup():
     init_db()
 
 # Request/Response models
+class ChatMessage(BaseModel):
+    role: Literal["system", "user", "assistant"]
+    content: str
+
+
 class QuestionRequest(BaseModel):
     question: str
-    chat_history: list = None
+    chat_history: list[ChatMessage] = Field(default_factory=list)
 
 class AnswerResponse(BaseModel):
     answer: str
@@ -63,3 +69,59 @@ def process_document(doc_id: int, content: str, filename: str):
 
     finally:
         conn.close()
+
+@app.post("/upload")
+async def upload_document(file: UploadFile, background_tasks: BackgroundTasks):
+    """Upload a document for processing."""
+
+    # Validate file type
+    allowed_types = [".txt", ".md", ".pdf"]
+    if not any(file.filename.endswith(t) for t in allowed_types):
+        raise HTTPException(400, f"File type not supported. Use: {allowed_types}")
+
+    # Read content
+    content = await file.read()
+
+    # Handle different file types
+    if file.filename.endswith(".pdf"):
+        # You'd use PyPDF2 or pdfplumber here
+        # For simplicity, assuming text extraction is done
+        text = content.decode("utf-8", errors="ignore")
+    else:
+        text = content.decode("utf-8")
+
+    # Create document record
+    conn = get_connection()
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO documents (filename) VALUES (%s) RETURNING id",
+            (file.filename,)
+        )
+        doc_id = cur.fetchone()["id"]
+    conn.commit()
+    conn.close()
+
+    # Process in background
+    background_tasks.add_task(process_document, doc_id, text, file.filename)
+
+    return {"message": "Document uploaded", "document_id": doc_id, "status": "processing"}
+
+@app.get("/documents")
+async def list_documents():
+    """List all uploaded documents and their status."""
+    conn = get_connection()
+    with conn.cursor() as cur:
+        cur.execute("SELECT id, filename, status, created_at FROM documents ORDER BY created_at DESC")
+        docs = cur.fetchall()
+    conn.close()
+    return docs
+
+@app.post("/ask", response_model=AnswerResponse)
+async def ask_question(request: QuestionRequest):
+    """Ask a question about the uploaded documents."""
+    history = [message.model_dump() for message in request.chat_history]
+    result = ask(request.question, history)
+    return AnswerResponse(
+        answer=result["answer"],
+        sources=result["sources"]
+    )
