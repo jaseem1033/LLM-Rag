@@ -5,9 +5,18 @@ from app.database import get_connection, init_db
 from app.chunker import chunk_document
 from app.embeddings import get_embeddings_batch
 from app.rag import ask
+from fastapi.middleware.cors import CORSMiddleware
 import io
 
 app = FastAPI(title="Document Q&A Bot")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Initialize database on startup
 @app.on_event("startup")
